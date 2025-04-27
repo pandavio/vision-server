@@ -4,3 +4,4 @@ torch
 transformers
 torchvision
 Pillow
+sentencepiece
