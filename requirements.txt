@@ -1,8 +1,3 @@
 flask
 flask-cors
-torch
-transformers
-torchvision
-Pillow
-sentencepiece
-imagehash
+openai>=1.0.0

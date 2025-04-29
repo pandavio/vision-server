@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: vision-server
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: OPENAI_API_KEY
+        value: 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

@@ -1,24 +1,17 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import base64
-import io
-from PIL import Image
-from transformers import BlipProcessor, Blip2ForConditionalGeneration  # ✅ 用 BLIP-2 正确类
-import torch
+import openai
+import os
 
-# 初始化图像问答模型
-print("🚀 正在加载 BLIP-2 图像问答模型...")
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# 初始化
+print("🚀 正在初始化 OpenAI 视觉问答服务器...")
 
-# 加载模型和处理器（注意模型类必须是 Blip2ForConditionalGeneration）
-processor = BlipProcessor.from_pretrained("Salesforce/blip2-flan-t5-xl")
-model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-flan-t5-xl").to(device)
-print("✅ BLIP-2 模型加载完成")
+client = openai.OpenAI(api_key="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")  # ✅换成你的
 
-# 初始化 Flask 应用
 app = Flask(__name__)
 CORS(app)
-app.config['JSON_AS_ASCII'] = False  # 确保返回的 JSON 中文不乱码
+app.config['JSON_AS_ASCII'] = False
 
 @app.route("/ping", methods=["GET"])
 def ping():
@@ -27,30 +20,45 @@ def ping():
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
-        data = request.get_json()
+        data = request.get_json(force=True)
         if not data or 'image' not in data or 'question' not in data:
             return jsonify({"error": "Missing image or question"}), 400
 
         print("📥 收到图像 + 问题请求")
 
-        # 解码图像
-        image_data = base64.b64decode(data['image'])
-        image = Image.open(io.BytesIO(image_data)).convert("RGB")
+        # base64数据
+        base64_image = data['image']
 
-        # 处理用户提问
+        # 用户问题
         question = data['question']
         print(f"🗣️ 用户问题: {question}")
 
-        # 推理：图像 + 问题
-        inputs = processor(image, text=question, return_tensors="pt").to(device)
-        out = model.generate(**inputs)
-        answer = processor.decode(out[0], skip_special_tokens=True)
+        # 判断语言
+        is_chinese = any('\u4e00' <= c <= '\u9fff' for c in question)
+        system_prompt = "请用中文回答。" if is_chinese else "Please answer in English."
+        print(f"🌐 自动选择回答语言提示: {system_prompt}")
 
-        print(f"🤖 模型回答: {answer}")
+        # 调用 GPT-4o，直接用 Base64的 inline image_url
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": [
+                    {"type": "text", "text": question},
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:image/jpeg;base64,{base64_image}"
+                    }}
+                ]}
+            ],
+            max_tokens=1000
+        )
+
+        final_answer = response.choices[0].message.content.strip()
+        print(f"🤖 GPT回答: {final_answer}")
 
         return jsonify({
             "question": question,
-            "answer": answer
+            "answer": final_answer
         })
 
     except Exception as e:
@@ -62,3 +70,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print(f"🚀 正在监听端口 {port}")
     app.run(host="0.0.0.0", port=port)
+
