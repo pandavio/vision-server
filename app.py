@@ -3,21 +3,22 @@ from flask_cors import CORS
 import base64
 import io
 from PIL import Image
-from transformers import BlipProcessor, BlipForConditionalGeneration
+from transformers import BlipProcessor, Blip2ForConditionalGeneration  # ✅ 用 BLIP-2 正确类
 import torch
 
 # 初始化图像问答模型
-print("🚀 正在加载BLIP-2图像问答模型...")
+print("🚀 正在加载 BLIP-2 图像问答模型...")
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-processor = BlipProcessor.from_pretrained("Salesforce/blip2-flan-t5-xl")  # 推荐小一点的模型
-model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip2-flan-t5-xl").to(device)
-print("✅ BLIP-2模型加载完成")
+# 加载模型和处理器（注意模型类必须是 Blip2ForConditionalGeneration）
+processor = BlipProcessor.from_pretrained("Salesforce/blip2-flan-t5-xl")
+model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-flan-t5-xl").to(device)
+print("✅ BLIP-2 模型加载完成")
 
 # 初始化 Flask 应用
 app = Flask(__name__)
 CORS(app)
-app.config['JSON_AS_ASCII'] = False  # 确保返回 JSON 中中文不乱码
+app.config['JSON_AS_ASCII'] = False  # 确保返回的 JSON 中文不乱码
 
 @app.route("/ping", methods=["GET"])
 def ping():
@@ -30,17 +31,17 @@ def analyze():
         if not data or 'image' not in data or 'question' not in data:
             return jsonify({"error": "Missing image or question"}), 400
 
-        print("📥 收到图像+问题请求")
+        print("📥 收到图像 + 问题请求")
 
-        # 处理图像
+        # 解码图像
         image_data = base64.b64decode(data['image'])
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
 
-        # 处理问题
+        # 处理用户提问
         question = data['question']
         print(f"🗣️ 用户问题: {question}")
 
-        # 图像 + 问题推理
+        # 推理：图像 + 问题
         inputs = processor(image, text=question, return_tensors="pt").to(device)
         out = model.generate(**inputs)
         answer = processor.decode(out[0], skip_special_tokens=True)
