@@ -3,28 +3,21 @@ from flask_cors import CORS
 import base64
 import io
 from PIL import Image
-from transformers import BlipProcessor, BlipForConditionalGeneration, pipeline
-import imagehash
+from transformers import BlipProcessor, BlipForConditionalGeneration
+import torch
 
-# 初始化图像描述模型
-print("🚀 正在加载图像识别模型...")
-processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-print("✅ 图像模型加载完成")
+# 初始化图像问答模型
+print("🚀 正在加载BLIP-2图像问答模型...")
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# 初始化翻译模型（英文 → 中文）
-print("🌐 正在加载翻译模型...")
-translator = pipeline("translation_en_to_zh", model="Helsinki-NLP/opus-mt-en-zh")
-print("✅ 翻译模型加载完成")
+processor = BlipProcessor.from_pretrained("Salesforce/blip2-flan-t5-xl")  # 推荐小一点的模型
+model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip2-flan-t5-xl").to(device)
+print("✅ BLIP-2模型加载完成")
 
 # 初始化 Flask 应用
 app = Flask(__name__)
 CORS(app)
 app.config['JSON_AS_ASCII'] = False  # 确保返回 JSON 中中文不乱码
-
-# 用于对比的前一帧哈希值
-last_hash = None
-hash_threshold = 5  # 差异值阈值，越小越严格
 
 @app.route("/ping", methods=["GET"])
 def ping():
@@ -32,47 +25,31 @@ def ping():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    global last_hash
-
     try:
         data = request.get_json()
-        if not data or 'image' not in data:
-            return jsonify({"error": "Missing image"}), 400
+        if not data or 'image' not in data or 'question' not in data:
+            return jsonify({"error": "Missing image or question"}), 400
 
-        print("📥 收到图像上传请求...")
+        print("📥 收到图像+问题请求")
 
+        # 处理图像
         image_data = base64.b64decode(data['image'])
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
 
-        # 计算当前图像哈希
-        current_hash = imagehash.average_hash(image)
+        # 处理问题
+        question = data['question']
+        print(f"🗣️ 用户问题: {question}")
 
-        # 比较与上一帧是否相似
-        if last_hash and abs(current_hash - last_hash) < hash_threshold:
-            print("🔁 图像未明显变化，跳过播报")
-            return jsonify({
-                "description_en": "",
-                "description_zh": ""
-            })
-
-        # 更新哈希
-        last_hash = current_hash
-
-        # 图像描述生成（英文）
-        inputs = processor(image, return_tensors="pt")
+        # 图像 + 问题推理
+        inputs = processor(image, text=question, return_tensors="pt").to(device)
         out = model.generate(**inputs)
-        caption_en = processor.decode(out[0], skip_special_tokens=True)
+        answer = processor.decode(out[0], skip_special_tokens=True)
 
-        # 翻译为中文
-        translation = translator(caption_en, max_length=100)
-        caption_zh = translation[0]["translation_text"]
-
-        print(f"🔎 英文: {caption_en}")
-        print(f"🇨🇳 中文: {caption_zh}")
+        print(f"🤖 模型回答: {answer}")
 
         return jsonify({
-            "description_en": caption_en,
-            "description_zh": caption_zh
+            "question": question,
+            "answer": answer
         })
 
     except Exception as e:
