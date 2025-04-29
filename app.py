@@ -20,6 +20,7 @@ print("✅ 翻译模型加载完成")
 # 初始化 Flask 应用
 app = Flask(__name__)
 CORS(app)
+app.config['JSON_AS_ASCII'] = False  # 确保返回 JSON 中中文不乱码
 
 # 用于对比的前一帧哈希值
 last_hash = None
