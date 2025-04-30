@@ -13,12 +13,17 @@ print("🚀 正在初始化 OpenAI + YOLO 视觉服务器...")
 # OpenAI 初始化
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# YOLOv5 加载（推荐使用本地模型 yolov5s.pt）
-print("🔍 正在加载 YOLOv5 模型...")
-yolo_model = torch.hub.load('ultralytics/yolov5', 'custom', path='yolov5s.pt', trust_repo=True)
+# YOLOv5 加载（本地模型）
+print("🔍 正在加载 YOLOv5 本地模型...")
+yolo_model = torch.hub.load(
+    repo_or_dir='yolov5',
+    model='custom',
+    path='yolov5/models/yolov5s.pt',
+    source='local'
+)
 yolo_model.eval()
 
-# 解码 Base64 图像并用 YOLO 检测
+# YOLO 检测函数
 def run_yolo_detection(base64_img):
     try:
         image_data = base64.b64decode(base64_img)
@@ -61,10 +66,10 @@ def analyze():
                 "labels": labels
             })
 
-        # 否则走 GPT 图像问答
+        # GPT-4o 图像问答
         is_chinese = any('\u4e00' <= c <= '\u9fff' for c in question)
         system_prompt = "请用中文回答。" if is_chinese else "Please answer in English."
-        print(f"🌐 使用 GPT-4o，提示语言: {system_prompt}")
+        print(f"🌐 使用 GPT-4o，语言提示: {system_prompt}")
 
         response = client.chat.completions.create(
             model="gpt-4o",
