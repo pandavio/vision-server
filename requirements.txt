@@ -7,3 +7,4 @@ opencv-python
 Pillow
 torch  # optional if you use pre-installed YOLO via hub
 pandas
+requests
