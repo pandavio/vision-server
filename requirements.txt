@@ -1,4 +1,8 @@
 flask
 flask-cors
-openai>=1.0.0
 gunicorn
+openai>=1.0.0
+numpy
+opencv-python
+Pillow
+torch  # optional if you use pre-installed YOLO via hub

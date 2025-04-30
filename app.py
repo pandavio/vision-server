@@ -4,11 +4,34 @@ import base64
 import openai
 import os
 
-# 初始化
-print("🚀 正在初始化 OpenAI 视觉问答服务器...")
+import torch
+from PIL import Image
+from io import BytesIO
 
-client = openai.OpenAI(api_key="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")  # ✅换成你的
+print("🚀 正在初始化 OpenAI + YOLO 视觉服务器...")
 
+# OpenAI 初始化
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# YOLOv5 加载（推荐使用本地模型 yolov5s.pt）
+print("🔍 正在加载 YOLOv5 模型...")
+yolo_model = torch.hub.load('ultralytics/yolov5', 'custom', path='yolov5s.pt', trust_repo=True)
+yolo_model.eval()
+
+# 解码 Base64 图像并用 YOLO 检测
+def run_yolo_detection(base64_img):
+    try:
+        image_data = base64.b64decode(base64_img)
+        image = Image.open(BytesIO(image_data)).convert("RGB")
+        results = yolo_model(image)
+        labels = results.pandas().xyxy[0]['name'].tolist()
+        print(f"🟢 YOLO 识别到: {labels}")
+        return labels
+    except Exception as e:
+        print("❌ YOLO识别失败:", e)
+        return []
+
+# Flask 初始化
 app = Flask(__name__)
 CORS(app)
 app.config['JSON_AS_ASCII'] = False
@@ -24,21 +47,25 @@ def analyze():
         if not data or 'image' not in data or 'question' not in data:
             return jsonify({"error": "Missing image or question"}), 400
 
-        print("📥 收到图像 + 问题请求")
-
-        # base64数据
         base64_image = data['image']
-
-        # 用户问题
         question = data['question']
-        print(f"🗣️ 用户问题: {question}")
+        print("📥 收到请求，问题:", question)
 
-        # 判断语言
+        # 判断是否用 YOLO 模式
+        if any(k in question.lower() for k in ["识别", "detect", "检测", "看到了什么", "看到什么", "有什么"]):
+            labels = run_yolo_detection(base64_image)
+            return jsonify({
+                "question": question,
+                "mode": "yolo",
+                "answer": "识别到物体：" + (", ".join(labels) if labels else "未检测到物体"),
+                "labels": labels
+            })
+
+        # 否则走 GPT 图像问答
         is_chinese = any('\u4e00' <= c <= '\u9fff' for c in question)
         system_prompt = "请用中文回答。" if is_chinese else "Please answer in English."
-        print(f"🌐 自动选择回答语言提示: {system_prompt}")
+        print(f"🌐 使用 GPT-4o，提示语言: {system_prompt}")
 
-        # 调用 GPT-4o，直接用 Base64的 inline image_url
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -54,20 +81,19 @@ def analyze():
         )
 
         final_answer = response.choices[0].message.content.strip()
-        print(f"🤖 GPT回答: {final_answer}")
+        print(f"🤖 GPT 回答: {final_answer}")
 
         return jsonify({
             "question": question,
+            "mode": "gpt4o",
             "answer": final_answer
         })
 
     except Exception as e:
-        print("❌ 错误:", str(e))
+        print("❌ 发生错误:", str(e))
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 5000))
     print(f"🚀 正在监听端口 {port}")
     app.run(host="0.0.0.0", port=port)
-
