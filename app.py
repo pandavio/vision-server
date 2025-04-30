@@ -54,9 +54,11 @@ def analyze():
 
         base64_image = data['image']
         question = data['question']
+        system_prompt = data.get('system_prompt', '')  # 👈 支持前端传来的提示词
+
         print("📥 收到请求，问题:", question)
 
-        # 判断是否用 YOLO 模式
+        # 判断是否 YOLO 模式
         if any(k in question.lower() for k in ["识别", "detect", "检测", "看到了什么", "看到什么", "有什么"]):
             labels = run_yolo_detection(base64_image)
             return jsonify({
@@ -66,10 +68,11 @@ def analyze():
                 "labels": labels
             })
 
-        # GPT-4o 图像问答
-        is_chinese = any('\u4e00' <= c <= '\u9fff' for c in question)
-        system_prompt = "请用中文回答。" if is_chinese else "Please answer in English."
-        print(f"🌐 使用 GPT-4o，语言提示: {system_prompt}")
+        # 使用前端传来的 system_prompt，否则按语言自动判断
+        if not system_prompt:
+            is_chinese = any('\u4e00' <= c <= '\u9fff' for c in question)
+            system_prompt = "请用中文回答。" if is_chinese else "Please answer in English."
+        print(f"🌐 使用 GPT-4o，系统提示: {system_prompt}")
 
         response = client.chat.completions.create(
             model="gpt-4o",
