@@ -10,4 +10,5 @@ pandas
 requests
 gitpython>=3.1.30
 setuptools>=70.0.0
-ultralytics
+ultralytics==8.3.124
+
