@@ -54,26 +54,38 @@ def analyze():
 
         base64_image = data['image']
         question = data['question']
-        system_prompt = data.get('system_prompt', '')  # 👈 支持前端传来的提示词
-
+        system_prompt = data.get('system_prompt', '')
         print("📥 收到请求，问题:", question)
 
-        # 判断是否 YOLO 模式
-        if any(k in question.lower() for k in ["识别", "detect", "检测", "看到了什么", "看到什么", "有什么"]):
-            labels = run_yolo_detection(base64_image)
-            return jsonify({
-                "question": question,
-                "mode": "yolo",
-                "answer": "识别到物体：" + (", ".join(labels) if labels else "未检测到物体"),
-                "labels": labels
-            })
+        # YOLO 检测标签
+        labels = run_yolo_detection(base64_image)
+        labels_text = ", ".join(labels) if labels else "未检测到物体"
 
-        # 使用前端传来的 system_prompt，否则按语言自动判断
-        if not system_prompt:
-            is_chinese = any('\u4e00' <= c <= '\u9fff' for c in question)
-            system_prompt = "请用中文回答。" if is_chinese else "Please answer in English."
-        print(f"🌐 使用 GPT-4o，系统提示: {system_prompt}")
+        # 检查语言
+        is_chinese = any('\u4e00' <= c <= '\u9fff' for c in question)
 
+        # 拼接 system prompt
+        if is_chinese:
+            extra_zh = ""
+            if "户外" in system_prompt:
+                extra_zh = "特别关注红绿灯、斑马线、盲道、障碍物、围墙、转角、沟渠等。"
+            elif "室内" in system_prompt:
+                extra_zh = "特别关注厕所、入口、出口、大门等设施。"
+
+            system_prompt += f"\n当前识别到的物体有：{labels_text}。\n请根据图像和物体，为视障人士提供简洁清晰的中文描述。{extra_zh}"
+
+        else:
+            extra_en = ""
+            if "outdoor" in system_prompt:
+                extra_en = "Pay special attention to traffic lights, crosswalks, tactile paving, obstacles, fences, corners, or ditches."
+            elif "indoor" in system_prompt:
+                extra_en = "Pay special attention to toilets, entrances, exits, or main doors."
+
+            system_prompt += f"\nObjects detected: {labels_text}.\nPlease describe the environment clearly for a blind user. {extra_en}"
+
+        print(f"🌐 GPT-4o 提示语:\n{system_prompt}")
+
+        # 调用 GPT
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -94,7 +106,8 @@ def analyze():
         return jsonify({
             "question": question,
             "mode": "gpt4o",
-            "answer": final_answer
+            "answer": final_answer,
+            "labels": labels
         })
 
     except Exception as e:
