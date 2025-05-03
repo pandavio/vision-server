@@ -5,11 +5,9 @@ openai>=1.0.0
 numpy
 opencv-python
 Pillow
-torch  # optional if pre-installed
+torch
 pandas
 requests
-
-# YOLOv8 添加的依赖
-ultralytics
 gitpython>=3.1.30
 setuptools>=70.0.0
+ultralytics
